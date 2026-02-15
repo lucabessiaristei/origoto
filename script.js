@@ -12,7 +12,8 @@
           tagsCt = document.getElementById('tags'),
           undoBtn = document.getElementById('undoBtn'),
           redoBtn = document.getElementById('redoBtn'),
-          quickOrderBtn = document.getElementById('quickOrderBtn');
+          quickOrderBtn = document.getElementById('quickOrderBtn'),
+          panBtn = document.getElementById('panBtn');
 
     // --- STATO APPLICAZIONE ---
     let S = {
@@ -32,33 +33,11 @@
         isPanning: false,
         spacePressed: false,
         lastMouse: { x: 0, y: 0 },
-        quickOrderActive: false
+        quickOrderActive: false,
+        panModeActive: false
     };
 
     let dragSrcEl = null;
-
-    // --- INIEZIONE STILI DINAMICI ---
-    const style = document.createElement('style');
-    style.innerHTML = `
-        .viewport-controls { position: absolute; bottom: 20px; right: 20px; display: flex; flex-direction: column; gap: 8px; pointer-events: none; z-index: 100; }
-        .viewport-controls button { pointer-events: auto; width: 40px; height: 40px; background: var(--surface); border: 1px solid var(--border); color: var(--text); border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; transition: 0.2s; }
-        .viewport-controls button:hover { border-color: var(--accent); color: var(--accent); }
-        .viewport-controls button.active { background: var(--accent); color: white; border-color: var(--accent); box-shadow: 0 0 15px var(--glow); }
-        .hr-sep { height: 1px; background: var(--border); margin: 4px 0; }
-        .pan-hint { font-size: 0.6rem; color: var(--dim); text-align: right; text-transform: uppercase; margin-top: 4px; line-height: 1.4; }
-        
-        .layer-item.selected { background: #ffffff12; border-left: 3px solid var(--accent) !important; padding-left: 7px; }
-        .layer-item.highlighted { background: #ffffff08; }
-        
-        #origamiSvg { cursor: crosshair; }
-        .space-panning #origamiSvg { cursor: grab !important; }
-        .dragging-canvas #origamiSvg { cursor: grabbing !important; }
-        .quick-order-mode #origamiSvg { cursor: cell; }
-
-        .hi-clone { fill: none; stroke: white; stroke-width: 0.005; pointer-events: none; stroke-dasharray: 0.01; animation: dash 2s linear infinite; }
-        @keyframes dash { from { stroke-dashoffset: 0.1; } to { stroke-dashoffset: 0; } }
-    `;
-    document.head.appendChild(style);
 
     // --- CARICAMENTO FILE ---
     document.getElementById('uploadNewBtn').onclick = () => fileInput.click();
@@ -73,23 +52,33 @@
         if (e.dataTransfer.files.length) loadFile(e.dataTransfer.files[0]);
     };
 
+    function loadFoldData(json, name) {
+        S.foldData = json;
+        S.fileName = name;
+        S.history = []; S.redoStack = []; S.selectedFace = -1;
+        S.view = { x: 0, y: 0, w: 1, h: 1 };
+        processModel(S.foldData);
+        document.getElementById('historyTools').style.display = 'flex';
+        document.getElementById('viewControls').style.display = 'flex';
+        document.getElementById('sidebar').style.display = 'flex';
+        dropZone.classList.add('compact');
+    }
+
     function loadFile(file) {
-        S.fileName = file.name;
         const r = new FileReader();
         r.onload = (e) => {
-            try {
-                S.foldData = JSON.parse(e.target.result);
-                S.history = []; S.redoStack = []; S.selectedFace = -1;
-                S.view = { x: 0, y: 0, w: 1, h: 1 };
-                processModel(S.foldData);
-                document.getElementById('historyTools').style.display = 'flex';
-                document.getElementById('viewControls').style.display = 'flex';
-                document.getElementById('sidebar').style.display = 'flex';
-                dropZone.classList.add('compact');
-            } catch (err) { alert("Errore nel file FOLD"); }
+            try { loadFoldData(JSON.parse(e.target.result), file.name); }
+            catch (err) { alert("Errore nel file FOLD"); }
         };
         r.readAsText(file);
     }
+
+    document.getElementById('exampleBtn').onclick = () => {
+        fetch('media/default.fold')
+            .then(r => r.json())
+            .then(data => loadFoldData(data, 'default.fold'))
+            .catch(() => alert("Could not load example file"));
+    };
 
     // --- VIEWPORT (ZOOM & PAN) ---
     function updateViewBox() {
@@ -115,7 +104,7 @@
     };
 
     svgEl.onmousedown = (e) => {
-        if (e.button === 1 || S.spacePressed) {
+        if (e.button === 1 || S.spacePressed || S.panModeActive) {
             S.isPanning = true;
             S.lastMouse = { x: e.clientX, y: e.clientY };
             document.body.classList.add('dragging-canvas');
@@ -150,6 +139,23 @@
         S.quickOrderActive = !S.quickOrderActive;
         quickOrderBtn.classList.toggle('active', S.quickOrderActive);
         document.body.classList.toggle('quick-order-mode', S.quickOrderActive);
+        if (S.quickOrderActive && S.panModeActive) {
+            S.panModeActive = false;
+            panBtn.classList.remove('active');
+            document.body.classList.remove('pan-mode');
+        }
+    };
+
+    // --- PAN TOOL ---
+    panBtn.onclick = () => {
+        S.panModeActive = !S.panModeActive;
+        panBtn.classList.toggle('active', S.panModeActive);
+        document.body.classList.toggle('pan-mode', S.panModeActive);
+        if (S.panModeActive && S.quickOrderActive) {
+            S.quickOrderActive = false;
+            quickOrderBtn.classList.remove('active');
+            document.body.classList.remove('quick-order-mode');
+        }
     };
 
     // --- LOGICA GEOMETRICA & REVISIONE ORDINE ---
@@ -176,7 +182,7 @@
 
         tagsCt.innerHTML = `<span class="tag">${S.fileName}</span><span class="tag">${S.drawOrder.length} faces</span>`;
         svgEl.style.display = '';
-        document.getElementById('svgBg').onclick = () => selectFace(-1);
+        svgEl.onclick = (e) => { if (e.target === svgEl) selectFace(-1); };
         refreshUI();
     }
 
@@ -334,6 +340,46 @@
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
         a.download = S.fileName.replace('.fold', '') + '_layered.fold';
+        a.click();
+    };
+    document.getElementById('exportSvgBtn').onclick = () => {
+        const sizeMM = 100; // ~10cm
+        const pad = 0.05;
+        const styles = getComputedStyle(document.documentElement);
+        const paperColor = styles.getPropertyValue('--paper').trim();
+        const paperBackColor = styles.getPropertyValue('--paper-back').trim();
+
+        // Build a clean standalone SVG with only the face polygons
+        const svg = document.createElementNS(NS, 'svg');
+        svg.setAttribute('xmlns', NS);
+        svg.setAttribute('viewBox', `${pad} ${pad} ${1 - 2 * pad} ${1 - 2 * pad}`);
+        svg.setAttribute('width', `${sizeMM}mm`);
+        svg.setAttribute('height', `${sizeMM}mm`);
+
+        // Background
+        const bg = document.createElementNS(NS, 'rect');
+        bg.setAttribute('x', pad); bg.setAttribute('y', pad);
+        bg.setAttribute('width', 1 - 2 * pad); bg.setAttribute('height', 1 - 2 * pad);
+        bg.setAttribute('fill', '#C8C3BC');
+        svg.appendChild(bg);
+
+        // Faces in draw order with resolved colors
+        S.drawOrder.forEach(fi => {
+            const poly = document.createElementNS(NS, 'polygon');
+            poly.setAttribute('points', S.facesVerts[fi].map(vi => S.vFolded[vi].join(',')).join(' '));
+            poly.setAttribute('fill', S.flipped[fi] ? paperBackColor : paperColor);
+            poly.setAttribute('stroke', 'rgba(0,0,0,0.15)');
+            poly.setAttribute('stroke-width', '0.002');
+            poly.setAttribute('stroke-linejoin', 'round');
+            svg.appendChild(poly);
+        });
+
+        const serializer = new XMLSerializer();
+        const svgString = serializer.serializeToString(svg);
+        const blob = new Blob([svgString], { type: 'image/svg+xml' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = S.fileName.replace('.fold', '') + '.svg';
         a.click();
     };
 

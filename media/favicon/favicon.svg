@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Layer_2" data-name="Layer 2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 53.84 62.7">
+  <defs>
+    <style>
+      .cls-1 {
+        fill: #f9f9f7;
+      }
+
+      .cls-1, .cls-2 {
+        stroke: #282423;
+        stroke-linejoin: bevel;
+        stroke-width: 2px;
+      }
+
+      .cls-2 {
+        fill: #ff6b36;
+      }
+    </style>
+  </defs>
+  <g id="origamiSvg">
+    <g id="facesLayer">
+      <polygon class="cls-2" points="11.13 51.09 18.5 45.64 12.43 34.63 1 32.97 1.07 44.65 11.13 51.09"/>
+      <polygon class="cls-1" points="16.99 42.86 26.96 61.87 8.74 49.56 16.99 42.86"/>
+      <polygon class="cls-2" points="26.96 .39 12.43 34.63 26.96 27.44 41.48 34.63 26.96 .39"/>
+      <polygon class="cls-1" points="7.75 8.84 20.99 14.46 26.96 27.44 19.22 33.04 7.75 8.84"/>
+      <polygon class="cls-1" points="34.7 33.04 26.96 27.44 32.92 14.46 46.17 8.84 34.7 33.04"/>
+      <polygon class="cls-1" points="26.96 27.44 41.48 34.63 26.96 61.87 26.96 27.44"/>
+      <polygon class="cls-1" points="26.96 27.44 26.96 61.87 12.43 34.63 26.96 27.44"/>
+      <polygon class="cls-2" points="52.84 44.65 52.91 32.97 41.48 34.63 35.41 45.64 42.79 51.09 52.84 44.65"/>
+      <polygon class="cls-1" points="45.17 49.56 26.96 61.87 36.92 42.86 45.17 49.56"/>
+    </g>
+  </g>
+</svg>

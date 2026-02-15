@@ -43,7 +43,6 @@ header {
 header h1 {
     font-size: 0.8rem;
     font-weight: 600;
-    text-transform: uppercase;
     color: var(--accent);
 }
 
@@ -77,18 +76,19 @@ header h1 {
 /* Contenitore Canvas isolato */
 .canvas-wrap {
     flex: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 2rem;
     position: relative;
     overflow: hidden;
+    background: #C8C3BC;
 }
 
 #origamiSvg {
-    max-width: 100%;
-    max-height: 100%;
-    filter: drop-shadow(0 8px 32px rgba(0, 0, 0, 0.4));
+    width: 100%;
+    height: 100%;
+    cursor: crosshair;
+
+    .space-panning &, .pan-mode & { cursor: grab !important; }
+    .dragging-canvas & { cursor: grabbing !important; }
+    .quick-order-mode & { cursor: cell; }
 }
 
 #origamiSvg polygon {
@@ -99,12 +99,66 @@ header h1 {
 }
 
 .hi-clone {
-    stroke: var(--hi) !important;
-    stroke-width: 0.006 !important;
-    stroke-opacity: 1 !important;
-    fill: transparent !important;
+    fill: none;
+    stroke: white;
+    stroke-width: 0.005;
     pointer-events: none;
-    paint-order: stroke fill;
+    stroke-dasharray: 0.01;
+    animation: dash 2s linear infinite;
+}
+
+@keyframes dash {
+    from { stroke-dashoffset: 0.1; }
+    to { stroke-dashoffset: 0; }
+}
+
+// Viewport controls
+.viewport-controls {
+    position: absolute;
+    bottom: 20px;
+    right: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    pointer-events: none;
+    z-index: 100;
+
+    button {
+        pointer-events: auto;
+        width: 40px;
+        height: 40px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        color: var(--text);
+        border-radius: 8px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: 0.2s;
+
+        & i {
+            font-size: 1.2rem;
+        }
+
+        &:hover { border-color: var(--accent); color: var(--accent); }
+        &.active { background: var(--accent); color: white; border-color: var(--accent); box-shadow: 0 0 15px var(--glow); }
+    }
+}
+
+.hr-sep {
+    height: 1px;
+    background: var(--border);
+    margin: 4px 0;
+}
+
+.pan-hint {
+    font-size: 0.6rem;
+    color: var(--dim);
+    text-align: right;
+    text-transform: uppercase;
+    margin-top: 4px;
+    line-height: 1.4;
 }
 
 .sidebar {
@@ -147,9 +201,14 @@ header h1 {
     background: #ffffff08;
 }
 
+.layer-item.selected {
+    background: #ffffff12;
+    border-left: 3px solid var(--accent) !important;
+    padding-left: 7px;
+}
+
 .layer-item.highlighted {
-    background: #e85d4a18;
-    border-left-color: var(--hi);
+    background: #ffffff08;
 }
 
 .layer-item.dragging {
