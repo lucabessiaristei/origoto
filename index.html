@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FOLD Layer Editor</title>
+    <link rel="stylesheet" href="style.min.css">
+    <link rel="stylesheet" type="text/css"
+        href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.1/src/fill/style.css" />
+</head>
+
+<body>
+    <header>
+        <h1>fold layer editor</h1>
+        <button id="uploadNewBtn" class="small">Upload New</button>
+        <div class="toolbar-group" id="historyTools" style="display:none">
+            <button id="undoBtn" class="small">Undo</button>
+            <button id="redoBtn" class="small">Redo</button>
+        </div>
+        <div class="spacer"></div>
+        <div class="tags" id="tags"></div>
+    </header>
+
+    <div class="main">
+
+        <div class="canvas-wrap" id="canvasArea">
+            <div class="drop-zone" id="dropZone">
+                <p id="dropText">Drop a .fold file here or click to browse</p>
+                <input type="file" id="fileInput" accept=".fold,.json" style="display:none">
+            </div>
+
+            <svg id="origamiSvg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1" style="display:none">
+                <rect id="svgBg" width="1" height="1" fill="#c8c4bc"></rect>
+                <g id="facesLayer"></g>
+                <g id="highlightLayer"></g>
+            </svg>
+
+            <div class="viewport-controls" id="viewControls" style="display:none">
+  <button id="quickOrderBtn" title="Quick Order Tool (Click: Back | Shift+Click: Front)">
+    <i class="ph-fill ph-cursor-click"></i>
+  </button>
+  <div class="hr-sep"></div>
+  <button id="zoomIn"><i class="ph-fill ph-plus"></i></button>
+  <button id="zoomReset">1:1</button>
+  <button id="zoomOut"><i class="ph-fill ph-minus"></i></button>
+</div>
+        </div>
+
+        <div class="sidebar" id="sidebar" style="display:none">
+            <div class="sidebar-title">draw order (top = front)</div>
+            <div class="layer-list" id="layerList"></div>
+            <div class="bottom-bar">
+                <button id="resetBtn">Reset</button>
+                <div class="spacer"></div>
+                <button class="primary" id="exportBtn">Export</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+
+</html>
