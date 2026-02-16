@@ -12,18 +12,15 @@
     <link rel="stylesheet" type="text/css"
         href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.1/src/fill/style.css" />
     <link rel="stylesheet" type="text/css"
-        href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.1/src/bold/style.css" />
+        href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.1/src/regular/style.css" />
 </head>
 
 <body>
     <header>
-        <h1>ORIGOTO — FOLD Layer Editor</h1>
-        <button id="uploadNewBtn" class="small">Upload New</button>
+        <a href="/"><h1>ORIGOTO — FOLD Layer Editor</h1></a>
+        <button id="uploadNewBtn" class="small">Import</button>
         <button id="exampleBtn" class="small">Example</button>
-        <div class="toolbar-group" id="historyTools" style="display:none">
-            <button id="undoBtn" class="small"><i class="ph-bold ph-arrow-counter-clockwise"></i> Undo</button>
-            <button id="redoBtn" class="small">Redo <i class="ph-bold ph-arrow-clockwise"></i></button>
-        </div>
+        <button id="exportModalBtn" class="small primary" style="display:none">Export</button>
         <button id="helpBtn" title="Help" class="small">Help</button>
         <div class="spacer"></div>
         <div class="tags" id="tags"></div>
@@ -43,12 +40,24 @@
                 <g id="highlightLayer"></g>
             </svg>
 
+            <div class="transform-controls" id="transformControls" style="display:none">
+                <button id="rotateCCWBtn" title="Rotate 90° Counter-clockwise">
+                    <i class="ph ph-arrow-counter-clockwise"></i>
+                </button>
+                <button id="rotateCWBtn" title="Rotate 90° Clockwise">
+                    <i class="ph ph-arrow-clockwise"></i>
+                </button>
+                <button id="flipBtn" title="Flip Horizontally">
+                    <i class="ph-fill ph-selection-inverse"></i>
+                </button>
+            </div>
+
             <div class="viewport-controls" id="viewControls" style="display:none">
                 <button id="quickOrderBtn" title="Quick Order Tool (Click: Back | Alt+Click: Front)">
                     <i class="ph-fill ph-stack"></i>
                 </button>
                 <button id="unfoldBtn" title="Preview Unfold">
-                    <i class="ph-bold ph-grid-four"></i>
+                    <i class="ph ph-grid-four"></i>
                 </button>
                 <div class="hr-sep"></div>
                 <button id="zoomIn"><i class="ph-fill ph-plus"></i></button>
@@ -58,13 +67,14 @@
         </div>
 
         <div class="sidebar" id="sidebar" style="display:none">
+            <div class="sidebar-resize" id="sidebarResize"></div>
             <div class="sidebar-title">draw order (top = front)</div>
             <div class="layer-list" id="layerList"></div>
             <div class="bottom-bar">
-                <button id="resetBtn">Reset</button>
+                <button id="undoBtn" class="small">Undo</button>
+                <button id="redoBtn" class="small">Redo</button>
                 <div class="spacer"></div>
-                <button class="primary" id="exportBtn">Export FOLD</button>
-                <button class="primary" id="exportSvgBtn">Export SVG</button>
+                <button id="resetBtn" class="small">Reset</button>
             </div>
         </div>
     </div>
@@ -97,12 +107,51 @@
                 <div class="help-section">
                     <div class="help-section-title">Toolbar</div>
                     <div class="help-row"><i class="ph-fill ph-stack"></i><span>Quick Order — click face to send back, Alt+click to send front</span></div>
-                    <div class="help-row"><i class="ph-bold ph-grid-four"></i><span>Unfold Preview — click anywhere to fold back</span></div>
+                    <div class="help-row"><i class="ph ph-grid-four"></i><span>Unfold Preview — click anywhere to fold back</span></div>
                 </div>
                 <div class="help-section">
                     <div class="help-section-title">Sidebar</div>
                     <div class="help-row"><span>Drag layers to reorder. Use arrow buttons for precise control.</span></div>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="export-overlay" id="exportOverlay">
+        <div class="export-box">
+            <div class="export-header">
+                <span>Export</span>
+                <button class="help-close" id="exportClose"><i class="ph-fill ph-x"></i></button>
+            </div>
+            <div class="export-content">
+                <div class="export-tabs">
+                    <button class="export-tab active" data-format="fold">FOLD</button>
+                    <button class="export-tab" data-format="svg">SVG</button>
+                </div>
+                <div class="export-panel" id="foldPanel">
+                    <label class="export-field">
+                        <span>Author</span>
+                        <input type="text" id="exportAuthor" placeholder="(optional)">
+                    </label>
+                    <label class="export-check">
+                        <input type="checkbox" id="exportFaceOrders" checked>
+                        <span>Overwrite faceOrders</span>
+                    </label>
+                </div>
+                <div class="export-panel" id="svgPanel" style="display:none">
+                    <label class="export-field">
+                        <span>Type</span>
+                        <select id="exportSvgType">
+                            <option value="snapshot">Snapshot (folded view)</option>
+                            <option value="crease">Crease pattern (flat)</option>
+                        </select>
+                    </label>
+                    <label class="export-check">
+                        <input type="checkbox" id="exportSvgBg">
+                        <span>White background</span>
+                    </label>
+                </div>
+                <button class="primary export-confirm" id="exportConfirmBtn">Export</button>
             </div>
         </div>
     </div>

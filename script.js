@@ -72,7 +72,8 @@
 		S.selectedFace = -1;
 		S.view = { x: 0, y: 0, w: 1, h: 1 };
 		processModel(S.foldData);
-		document.getElementById("historyTools").style.display = "flex";
+		document.getElementById("exportModalBtn").style.display = "";
+		document.getElementById("transformControls").style.display = "flex";
 		document.getElementById("viewControls").style.display = "flex";
 		document.getElementById("sidebar").style.display = "flex";
 		dropZone.classList.add("compact");
@@ -156,10 +157,16 @@
 
 	// Keyboard shortcuts
 	window.onkeydown = (e) => {
-		if (e.key === "Escape") document.getElementById("helpOverlay").classList.remove("open");
+		if (e.key === "Escape") {
+			document.getElementById("helpOverlay").classList.remove("open");
+			document.getElementById("exportOverlay").classList.remove("open");
+		}
 		if (e.code === "Space") {
 			S.spacePressed = true;
 			document.body.classList.add("space-panning");
+		}
+		if (S.quickOrderActive && e.altKey) {
+			document.body.classList.add("alt-pressed");
 		}
 		if ((e.ctrlKey || e.metaKey) && e.key === "z") {
 			e.preventDefault();
@@ -175,12 +182,97 @@
 			S.spacePressed = false;
 			document.body.classList.remove("space-panning");
 		}
+		if (!(S.quickOrderActive && e.altKey)) {
+			document.body.classList.remove("alt-pressed");
+		}
 	};
 
 	document.getElementById("zoomIn").onclick = () => changeZoom(1.2);
 	document.getElementById("zoomOut").onclick = () => changeZoom(0.8);
 	document.getElementById("zoomReset").onclick = () => {
 		S.view = { x: 0, y: 0, w: 1, h: 1 };
+		updateViewBox();
+	};
+
+	// --- ROTATE & FLIP (Permanent on FoldData) ---
+	function transformFoldData(transformFn) {
+		if (!S.foldData) return;
+
+		// Trasforma coordinate piatte (Crease Pattern)
+		S.foldData.vertices_coords = S.foldData.vertices_coords.map(transformFn);
+
+		// Trasforma coordinate ripiegate (se presenti nel file)
+		if (S.foldData.vertices_coords_folded) {
+			S.foldData.vertices_coords_folded = S.foldData.vertices_coords_folded.map(transformFn);
+		}
+
+		// Rielabora tutto per aggiornare S.vFolded e S.vFlat normalizzati
+		processModel(S.foldData);
+	}
+
+	document.getElementById("rotateCWBtn").onclick = () => {
+		const cx = 0.5,
+			cy = 0.5;
+		transformFoldData(([x, y]) => [cx - (y - cy), cy + (x - cx)]);
+	};
+
+	document.getElementById("rotateCCWBtn").onclick = () => {
+		const cx = 0.5,
+			cy = 0.5;
+		transformFoldData(([x, y]) => [cx + (y - cy), cy - (x - cx)]);
+	};
+
+	document.getElementById("flipBtn").onclick = () => {
+		if (!S.foldData) return;
+
+		// Specchia le coordinate
+		const flip = ([x, y]) => [1 - x, y];
+		S.foldData.vertices_coords = S.foldData.vertices_coords.map(flip);
+		if (S.foldData.vertices_coords_folded) {
+			S.foldData.vertices_coords_folded = S.foldData.vertices_coords_folded.map(flip);
+		}
+
+		// Inverti gli assegnamenti degli spigoli (M diventa V e viceversa)
+		if (S.foldData.edges_assignment) {
+			S.foldData.edges_assignment = S.foldData.edges_assignment.map((a) => {
+				if (a === "M") return "V";
+				if (a === "V") return "M";
+				return a;
+			});
+		}
+
+		// Inverti l'ordine dei layer per mantenere la coerenza visiva
+		S.drawOrder.reverse();
+
+		processModel(S.foldData);
+	};
+    
+	// --- ROTATE & FLIP ---
+	function rotateVertices(angle) {
+		const cx = 0.5,
+			cy = 0.5;
+		const cos = Math.cos(angle),
+			sin = Math.sin(angle);
+		const rot = ([x, y]) => {
+			const dx = x - cx,
+				dy = y - cy;
+			return [cx + dx * cos - dy * sin, cy + dx * sin + dy * cos];
+		};
+		S.vFolded = S.vFolded.map(rot);
+		S.vFlat = S.vFlat.map(rot);
+		render();
+		updateViewBox();
+	}
+	document.getElementById("rotateCWBtn").onclick = () => rotateVertices(Math.PI / 2);
+	document.getElementById("rotateCCWBtn").onclick = () => rotateVertices(-Math.PI / 2);
+
+	document.getElementById("flipBtn").onclick = () => {
+		S.vFolded = S.vFolded.map(([x, y]) => [1 - x, y]);
+		S.vFlat = S.vFlat.map(([x, y]) => [1 - x, y]);
+		S.flipped = S.flipped.map((f) => !f);
+		S.drawOrder.reverse();
+		render();
+		buildList();
 		updateViewBox();
 	};
 
@@ -209,17 +301,13 @@
 			const poly = S.polyMap[fi];
 			if (!poly) return;
 
-			const pts = S.facesVerts[fi].map((vi) => {
-				const f = S.vFolded[vi],
-					c = S.vFlat[vi];
-				return [lerp(f[0], c[0], t), lerp(f[1], c[1], t)];
-			});
+			const pts = S.facesVerts[fi].map((vi) => [lerp(S.vFolded[vi][0], S.vFlat[vi][0], t), lerp(S.vFolded[vi][1], S.vFlat[vi][1], t)]);
 			poly.setAttribute("points", pts.map((p) => p.join(",")).join(" "));
 
 			if (S.flipped[fi]) {
 				poly.style.fill = `color-mix(in srgb, ${back}, ${paper} ${t * 100}%)`;
 			} else {
-				poly.setAttribute("fill", paper);
+				poly.style.fill = paper;
 			}
 		});
 		renderHighlights();
@@ -245,7 +333,7 @@
 
 	function setUnfoldDisabled(disabled) {
 		// Disable/enable all interactive elements except unfoldBtn
-		document.querySelectorAll("#sidebar button, #historyTools button, #viewControls button:not(#unfoldBtn), #quickOrderBtn").forEach((btn) => {
+		document.querySelectorAll("#sidebar button, #viewControls button:not(#unfoldBtn), #transformControls button, #exportModalBtn").forEach((btn) => {
 			btn.disabled = disabled;
 		});
 		// Disable sidebar drag & layer clicks
@@ -500,6 +588,7 @@
 			if (fi !== -1 && S.polyMap[fi]) {
 				const clone = S.polyMap[fi].cloneNode(true);
 				clone.classList.add("hi-clone");
+				clone.style.fill = "";
 				highlightLayer.appendChild(clone);
 			}
 		});
@@ -517,7 +606,7 @@
 			if (fi === S.selectedFace) item.classList.add("selected");
 
 			item.innerHTML = `
-                <div class="drag-handle"><i class="ph-bold ph-dots-six-vertical"></i></div>
+                <div class="drag-handle"><i class="ph ph-dots-six-vertical"></i></div>
                 <div class="swatch" style="background:${S.flipped[fi] ? "var(--paper-back)" : "var(--paper)"}"></div>
                 <span class="face-id">Face ${fi}</span>
                 <div class="controls">
@@ -606,53 +695,95 @@
 		});
 	}
 
-	// --- EXPORT & RESET ---
+	// --- RESET ---
 	document.getElementById("resetBtn").onclick = () => {
 		if (S.foldData) {
 			saveState();
 			processModel(S.foldData);
 		}
 	};
-	document.getElementById("exportBtn").onclick = () => {
+
+	undoBtn.onclick = undo;
+	redoBtn.onclick = redo;
+
+	// --- EXPORT MODAL ---
+	const exportOverlay = document.getElementById("exportOverlay");
+	const exportTabs = exportOverlay.querySelectorAll(".export-tab");
+	const foldPanel = document.getElementById("foldPanel");
+	const svgPanel = document.getElementById("svgPanel");
+	let exportFormat = "fold";
+
+	document.getElementById("exportModalBtn").onclick = () => exportOverlay.classList.add("open");
+	document.getElementById("exportClose").onclick = () => exportOverlay.classList.remove("open");
+	exportOverlay.onclick = (e) => {
+		if (e.target === exportOverlay) exportOverlay.classList.remove("open");
+	};
+
+	exportTabs.forEach((tab) => {
+		tab.onclick = () => {
+			exportTabs.forEach((t) => t.classList.remove("active"));
+			tab.classList.add("active");
+			exportFormat = tab.dataset.format;
+			foldPanel.style.display = exportFormat === "fold" ? "" : "none";
+			svgPanel.style.display = exportFormat === "svg" ? "" : "none";
+		};
+	});
+
+	function exportFold() {
 		const out = JSON.parse(JSON.stringify(S.foldData));
 		out["origoto:faceManualOrder"] = S.drawOrder.reduce((acc, fi, i) => {
 			acc[fi] = i;
 			return acc;
 		}, []);
+		const author = document.getElementById("exportAuthor").value.trim();
+		if (author) out.file_author = author;
+		if (document.getElementById("exportFaceOrders").checked) {
+			// Build faceOrders pairs from drawOrder
+			const orders = [];
+			for (let i = 0; i < S.drawOrder.length; i++) {
+				for (let j = i + 1; j < S.drawOrder.length; j++) {
+					orders.push([S.drawOrder[i], S.drawOrder[j], 1]);
+				}
+			}
+			out.faceOrders = orders;
+		}
 		const blob = new Blob([JSON.stringify(out)], { type: "application/json" });
 		const a = document.createElement("a");
 		a.href = URL.createObjectURL(blob);
 		a.download = S.fileName.replace(".fold", "") + "_layered.fold";
 		a.click();
-	};
-	document.getElementById("exportSvgBtn").onclick = () => {
-		const sizeMM = 100; // ~10cm
-		const pad = 0.05;
+	}
+
+	function exportSvg(type) {
+		const sizeMM = 100;
+		const pad = 0.06;
+		const whiteBg = document.getElementById("exportSvgBg").checked;
 		const styles = getComputedStyle(document.documentElement);
 		const paperColor = styles.getPropertyValue("--paper").trim();
 		const paperBackColor = styles.getPropertyValue("--paper-back").trim();
 		const borderColor = styles.getPropertyValue("--border").trim();
 
-		// Build a clean standalone SVG with only the face polygons
 		const svg = document.createElementNS(NS, "svg");
 		svg.setAttribute("xmlns", NS);
-		svg.setAttribute("viewBox", `${pad} ${pad} ${1 - 2 * pad} ${1 - 2 * pad}`);
+		svg.setAttribute("viewBox", `${-pad} ${-pad} ${1 + 2 * pad} ${1 + 2 * pad}`);
 		svg.setAttribute("width", `${sizeMM}mm`);
 		svg.setAttribute("height", `${sizeMM}mm`);
 
-		// Background
-		const bg = document.createElementNS(NS, "rect");
-		bg.setAttribute("x", pad);
-		bg.setAttribute("y", pad);
-		bg.setAttribute("width", 1 - 2 * pad);
-		bg.setAttribute("height", 1 - 2 * pad);
-		bg.setAttribute("fill", "#C8C3BC");
-		svg.appendChild(bg);
+		if (whiteBg) {
+			const bg = document.createElementNS(NS, "rect");
+			bg.setAttribute("x", -pad);
+			bg.setAttribute("y", -pad);
+			bg.setAttribute("width", 1 + 2 * pad);
+			bg.setAttribute("height", 1 + 2 * pad);
+			bg.setAttribute("fill", "#ffffff");
+			svg.appendChild(bg);
+		}
 
-		// Faces in draw order with resolved colors
+		const verts = type === "crease" ? S.vFlat : S.vFolded;
+
 		S.drawOrder.forEach((fi) => {
 			const poly = document.createElementNS(NS, "polygon");
-			poly.setAttribute("points", S.facesVerts[fi].map((vi) => S.vFolded[vi].join(",")).join(" "));
+			poly.setAttribute("points", S.facesVerts[fi].map((vi) => verts[vi].join(",")).join(" "));
 			poly.setAttribute("fill", S.flipped[fi] ? paperBackColor : paperColor);
 			poly.setAttribute("stroke", borderColor);
 			poly.setAttribute("stroke-width", "0.003");
@@ -660,17 +791,67 @@
 			svg.appendChild(poly);
 		});
 
+		// Crease lines for flat/crease pattern export
+		if (type === "crease" && S.foldData.edges_vertices && S.foldData.edges_assignment) {
+			const ev = S.foldData.edges_vertices;
+			const ea = S.foldData.edges_assignment;
+			const creaseColors = { M: "#e33", V: "#33c", B: "#111", F: "#999", U: "#999" };
+			const creaseDash = { M: "0.015,0.005", V: "0.005,0.005" };
+			ev.forEach((e, ei) => {
+				const a = ea[ei];
+				const line = document.createElementNS(NS, "line");
+				line.setAttribute("x1", verts[e[0]][0]);
+				line.setAttribute("y1", verts[e[0]][1]);
+				line.setAttribute("x2", verts[e[1]][0]);
+				line.setAttribute("y2", verts[e[1]][1]);
+				line.setAttribute("stroke", creaseColors[a] || "#999");
+				line.setAttribute("stroke-width", a === "B" ? "0.004" : "0.002");
+				line.setAttribute("stroke-linecap", "round");
+				if (creaseDash[a]) line.setAttribute("stroke-dasharray", creaseDash[a]);
+				svg.appendChild(line);
+			});
+		}
+
 		const serializer = new XMLSerializer();
 		const svgString = serializer.serializeToString(svg);
 		const blob = new Blob([svgString], { type: "image/svg+xml" });
 		const a = document.createElement("a");
 		a.href = URL.createObjectURL(blob);
-		a.download = S.fileName.replace(".fold", "") + ".svg";
+		a.download = S.fileName.replace(".fold", "") + (type === "crease" ? "_crease" : "") + ".svg";
 		a.click();
+	}
+
+	document.getElementById("exportConfirmBtn").onclick = () => {
+		if (exportFormat === "fold") exportFold();
+		else exportSvg(document.getElementById("exportSvgType").value);
+		exportOverlay.classList.remove("open");
 	};
 
-	undoBtn.onclick = undo;
-	redoBtn.onclick = redo;
+	// --- SIDEBAR RESIZE ---
+	const sidebar = document.getElementById("sidebar");
+	const sidebarResize = document.getElementById("sidebarResize");
+	let resizing = false;
+
+	sidebarResize.onmousedown = (e) => {
+		e.preventDefault();
+		resizing = true;
+		sidebarResize.classList.add("active");
+		document.body.style.cursor = "col-resize";
+	};
+	window.addEventListener("mousemove", (e) => {
+		if (!resizing) return;
+		const newWidth = window.innerWidth - e.clientX;
+		const min = parseInt(getComputedStyle(sidebar).minWidth);
+		const max = window.innerWidth * 0.5;
+		sidebar.style.width = Math.max(min, Math.min(max, newWidth)) + "px";
+	});
+	window.addEventListener("mouseup", () => {
+		if (resizing) {
+			resizing = false;
+			sidebarResize.classList.remove("active");
+			document.body.style.cursor = "";
+		}
+	});
 
 	// --- HELP LIGHTBOX ---
 	const helpOverlay = document.getElementById("helpOverlay");

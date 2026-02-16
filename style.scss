@@ -6,6 +6,11 @@
     box-sizing: border-box;
 }
 
+a {
+    text-decoration: none;
+    color: inherit;
+}
+
 :root {
     --bg: #1a1a1e;
     --surface: #26262b;
@@ -85,11 +90,12 @@ header h1 {
 #origamiSvg {
     width: 100%;
     height: 100%;
-    cursor: crosshair;
+    cursor: grab;
 
     .space-panning & { cursor: grab !important; }
     .dragging-canvas & { cursor: grabbing !important; }
-    .quick-order-mode & { cursor: cell; }
+    .quick-order-mode & polygon { cursor: s-resize; }
+    .quick-order-mode.alt-pressed & polygon { cursor: n-resize; }
 }
 
 #origamiSvg polygon {
@@ -101,7 +107,7 @@ header h1 {
 
 #origamiSvg .hi-clone {
     fill: none;
-    stroke: var(--accent);
+    stroke: #c0816a;
     stroke-width: 0.003;
     pointer-events: none;
     stroke-dasharray: 0.01;
@@ -113,10 +119,9 @@ header h1 {
     to { stroke-dashoffset: 0; }
 }
 
-// Viewport controls
-.viewport-controls {
+// Canvas overlay buttons (shared)
+%canvas-btn-group {
     position: absolute;
-    bottom: 20px;
     right: 20px;
     display: flex;
     flex-direction: column;
@@ -126,25 +131,47 @@ header h1 {
 
     button {
         pointer-events: auto;
-        width: 40px;
-        height: 40px;
         background: var(--surface);
         border: 1px solid var(--border);
         color: var(--text);
-        border-radius: 8px;
         cursor: pointer;
         display: flex;
         align-items: center;
         justify-content: center;
 
-        & i {
-            font-size: 1.2rem;
-        }
+        & i { font-size: 1.2rem; }
 
-        &:hover { border-color: var(--accent); color: var(--accent); }
+        &:hover { background: var(--accent); color: white !important; border-color: var(--accent); }
         &.active { background: var(--accent); color: white; border-color: var(--accent); box-shadow: 0 0 15px var(--glow);
             &:hover { background: var(--surface); color: var(--accent); }
         }
+    }
+}
+
+// Transform controls (top-right, smaller)
+.transform-controls {
+    @extend %canvas-btn-group;
+    top: 20px;
+    flex-direction: row;
+
+    button {
+        width: 32px;
+        height: 32px;
+        border-radius: 6px;
+
+        & i { font-size: 1rem; }
+    }
+}
+
+// Viewport controls (bottom-right)
+.viewport-controls {
+    @extend %canvas-btn-group;
+    bottom: 20px;
+
+    button {
+        width: 40px;
+        height: 40px;
+        border-radius: 8px;
     }
 }
 
@@ -164,13 +191,29 @@ header h1 {
 }
 
 .sidebar {
-    width: 300px;
+    min-width: 300px;
+    max-width: 50vw;
     border-left: 1px solid var(--border);
     display: flex;
     flex-direction: column;
+    position: relative;
     flex-shrink: 0;
     background: var(--bg);
     z-index: 5;
+}
+
+.sidebar-resize {
+    position: absolute;
+    left: -3px;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    cursor: col-resize;
+    z-index: 10;
+
+    &:hover, &.active {
+        background: var(--accent);
+    }
 }
 
 .sidebar-title {
@@ -239,8 +282,12 @@ header h1 {
 .layer-item .controls {
     margin-left: auto;
     display: flex;
-    gap: 0.25rem;
+    gap: 0.5rem;
     align-items: center;
+
+    .btn-icon {
+        padding: .5rem .5rem;
+    }
 }
 
 .btn-icon {
@@ -337,12 +384,22 @@ button.small {
     background: rgba(26, 26, 30, 0.9);
     opacity: 0;
     pointer-events: none;
+
+    img { display: none; }
 }
 
 .drop-zone.drag-active {
     opacity: 1;
     pointer-events: all;
-    border: 2px dashed var(--accent);
+
+    &::after {
+        content: "";
+        position: absolute;
+        inset: 12px;
+        border: 2px dashed var(--accent);
+        border-radius: 12px;
+        pointer-events: none;
+    }
 }
 
 .drop-zone input {
@@ -413,7 +470,8 @@ button.small {
     border-radius: 10px;
     width: 480px;
     max-height: 80vh;
-    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
 }
 
@@ -442,6 +500,7 @@ button.small {
 
 .help-content {
     padding: 0.8rem 1.2rem 1.2rem;
+    overflow-y: auto;
 }
 
 .help-section {
@@ -491,6 +550,110 @@ kbd {
     padding: 0.1rem 0.4rem;
     border-radius: 3px;
     color: var(--text);
+}
+
+// Export modal (reuses help-overlay/help-box pattern)
+.export-overlay {
+    @extend .help-overlay;
+}
+
+.export-box {
+    @extend .help-box;
+    width: 400px;
+}
+
+.export-header {
+    @extend .help-header;
+}
+
+.export-content {
+    padding: 0.8rem 1.2rem 1.2rem;
+}
+
+.export-tabs {
+    display: flex;
+    gap: 0.4rem;
+    margin-bottom: 1rem;
+}
+
+.export-tab {
+    flex: 1;
+    text-align: center;
+
+    &.active {
+        @extend .primary;
+    }
+}
+
+.export-panel {
+    min-height: 2.5rem;
+}
+
+.export-field {
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+    font-size: 0.65rem;
+    color: var(--dim);
+
+    & + .export-field {
+        margin-top: 0.6rem;
+    }
+
+    span {
+        min-width: 4rem;
+        text-transform: uppercase;
+        font-weight: 600;
+        font-size: 0.6rem;
+    }
+
+    input, select {
+        flex: 1;
+        font-family: inherit;
+        font-size: 0.65rem;
+        height: 1.8rem;
+        padding: 0 0.5rem;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 3px;
+        color: var(--text);
+        outline: none;
+        -webkit-appearance: none;
+        appearance: none;
+
+        &:focus {
+            border-color: var(--accent);
+        }
+    }
+
+    select {
+        cursor: pointer;
+    }
+}
+
+.export-check {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.6rem;
+    font-size: 0.6rem;
+    color: var(--dim);
+    cursor: pointer;
+
+    input[type="checkbox"] {
+        accent-color: var(--accent);
+        cursor: pointer;
+    }
+
+    span {
+        font-weight: 600;
+        text-transform: uppercase;
+    }
+}
+
+.export-confirm {
+    width: 100%;
+    margin-top: 0.8rem;
 }
 
 .layer-list::-webkit-scrollbar {
