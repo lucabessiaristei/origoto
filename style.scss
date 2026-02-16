@@ -358,7 +358,7 @@ button.small {
     bottom: 1rem;
     left: 1.2rem;
     z-index: 200;
-    color: var(--paper);
+    color: var(--border);
     text-decoration: none;
     font-size: 1.4rem;
     transition: opacity var(--speed), color var(--speed);
@@ -380,13 +380,13 @@ button.small {
     align-items: center;
     justify-content: center;
     background: var(--surface);
-    border: 1px solid var(--border);
-    color: var(--dim);
+    color: var(--text);
     border-radius: 50%;
     font-size: 0.9rem;
     cursor: pointer;
+    border: none;
 
-    &:hover { border-color: var(--accent); color: var(--accent); }
+    &:hover { color: var(--accent); }
 }
 
 .help-overlay {

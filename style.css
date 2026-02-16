@@ -27,7 +27,9 @@ body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  user-select: none;
+  -webkit-user-select: none;
+     -moz-user-select: none;
+          user-select: none;
 }
 
 header {
@@ -87,9 +89,11 @@ header h1 {
   cursor: crosshair;
 }
 .space-panning #origamiSvg {
+  cursor: -webkit-grab !important;
   cursor: grab !important;
 }
 .dragging-canvas #origamiSvg {
+  cursor: -webkit-grabbing !important;
   cursor: grabbing !important;
 }
 .quick-order-mode #origamiSvg {
@@ -109,7 +113,17 @@ header h1 {
   stroke-width: 0.003;
   pointer-events: none;
   stroke-dasharray: 0.01;
-  animation: dash 2s linear infinite;
+  -webkit-animation: dash 2s linear infinite;
+          animation: dash 2s linear infinite;
+}
+
+@-webkit-keyframes dash {
+  from {
+    stroke-dashoffset: 0.1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
 }
 
 @keyframes dash {
@@ -276,6 +290,7 @@ header h1 {
 }
 
 .drag-handle {
+  cursor: -webkit-grab;
   cursor: grab;
   color: var(--dim);
   font-size: 0.8rem;
@@ -370,7 +385,7 @@ button.small {
   bottom: 1rem;
   left: 1.2rem;
   z-index: 200;
-  color: var(--paper);
+  color: var(--border);
   text-decoration: none;
   font-size: 1.4rem;
   transition: opacity var(--speed), color var(--speed);
@@ -393,14 +408,13 @@ button.small {
   align-items: center;
   justify-content: center;
   background: var(--surface);
-  border: 1px solid var(--border);
-  color: var(--dim);
+  color: var(--text);
   border-radius: 50%;
   font-size: 0.9rem;
   cursor: pointer;
+  border: none;
 }
 .help-btn:hover {
-  border-color: var(--accent);
   color: var(--accent);
 }
 
@@ -514,5 +528,4 @@ kbd {
   background: var(--border);
   border-radius: 2px;
 }
-
 /*# sourceMappingURL=style.css.map */
