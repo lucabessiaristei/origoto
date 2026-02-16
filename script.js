@@ -1,7 +1,7 @@
 (function () {
     const NS = 'http://www.w3.org/2000/svg';
     
-    // --- ELEMENTI DOM ---
+    // --- DOM ELEMENTS ---
     const dropZone = document.getElementById('dropZone'),
           fileInput = document.getElementById('fileInput'),
           canvasArea = document.getElementById('canvasArea'),
@@ -12,17 +12,17 @@
           tagsCt = document.getElementById('tags'),
           undoBtn = document.getElementById('undoBtn'),
           redoBtn = document.getElementById('redoBtn'),
-          quickOrderBtn = document.getElementById('quickOrderBtn'),
-          panBtn = document.getElementById('panBtn');
+          quickOrderBtn = document.getElementById('quickOrderBtn');
 
-    // --- STATO APPLICAZIONE ---
+    // --- APPLICATION STATE ---
     let S = {
         foldData: null,
         fileName: '',
         vFolded: null,
+        vFlat: null,
         facesVerts: null,
         flipped: null,
-        drawOrder: [], // L'ordine effettivo delle facce (array di indici)
+        drawOrder: [],
         polyMap: {},
         hiFace: -1,
         selectedFace: -1,
@@ -34,12 +34,15 @@
         spacePressed: false,
         lastMouse: { x: 0, y: 0 },
         quickOrderActive: false,
-        panModeActive: false
+        // Unfold
+        morphT: 0,
+        isUnfolded: false,
+        animating: false
     };
 
     let dragSrcEl = null;
 
-    // --- CARICAMENTO FILE ---
+    // --- FILE LOADING ---
     document.getElementById('uploadNewBtn').onclick = () => fileInput.click();
     dropZone.onclick = (e) => { if(e.target !== fileInput) fileInput.click(); };
     fileInput.onchange = () => { if (fileInput.files.length) loadFile(fileInput.files[0]); };
@@ -68,7 +71,7 @@
         const r = new FileReader();
         r.onload = (e) => {
             try { loadFoldData(JSON.parse(e.target.result), file.name); }
-            catch (err) { alert("Errore nel file FOLD"); }
+            catch (err) { alert("Error parsing FOLD file"); }
         };
         r.readAsText(file);
     }
@@ -97,24 +100,33 @@
 
     svgEl.onwheel = (e) => {
         e.preventDefault();
+        if (S.isUnfolded) return;
         const r = svgEl.getBoundingClientRect();
         const mx = S.view.x + (e.clientX - r.left) * (S.view.w / r.width);
         const my = S.view.y + (e.clientY - r.top) * (S.view.h / r.height);
         changeZoom(e.deltaY > 0 ? 0.9 : 1.1, mx, my);
     };
 
+    let didPan = false;
     svgEl.onmousedown = (e) => {
-        if (e.button === 1 || S.spacePressed || S.panModeActive) {
+        if (S.isUnfolded) return;
+        const onFace = e.target.tagName === 'polygon';
+        if (e.button === 1 || S.spacePressed || (!onFace && e.button === 0)) {
             S.isPanning = true;
+            didPan = false;
             S.lastMouse = { x: e.clientX, y: e.clientY };
             document.body.classList.add('dragging-canvas');
             e.preventDefault();
         }
     };
+    svgEl.onclick = (e) => {
+        if (e.target === svgEl && !didPan) selectFace(-1);
+    };
     window.onmousemove = (e) => {
         if (S.isPanning) {
             let dx = (e.clientX - S.lastMouse.x) * (S.view.w / svgEl.clientWidth);
             let dy = (e.clientY - S.lastMouse.y) * (S.view.h / svgEl.clientHeight);
+            if (Math.abs(dx) > 0 || Math.abs(dy) > 0) didPan = true;
             S.view.x -= dx; S.view.y -= dy;
             S.lastMouse = { x: e.clientX, y: e.clientY };
             updateViewBox();
@@ -122,8 +134,9 @@
     };
     window.onmouseup = () => { S.isPanning = false; document.body.classList.remove('dragging-canvas'); };
 
-    // Shortcut Tastiera
+    // Keyboard shortcuts
     window.onkeydown = (e) => {
+        if (e.key === 'Escape') document.getElementById('helpOverlay').classList.remove('open');
         if (e.code === 'Space') { S.spacePressed = true; document.body.classList.add('space-panning'); }
         if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); }
         if ((e.ctrlKey || e.metaKey) && e.key === 'y') { e.preventDefault(); redo(); }
@@ -139,26 +152,83 @@
         S.quickOrderActive = !S.quickOrderActive;
         quickOrderBtn.classList.toggle('active', S.quickOrderActive);
         document.body.classList.toggle('quick-order-mode', S.quickOrderActive);
-        if (S.quickOrderActive && S.panModeActive) {
-            S.panModeActive = false;
-            panBtn.classList.remove('active');
-            document.body.classList.remove('pan-mode');
-        }
     };
 
-    // --- PAN TOOL ---
-    panBtn.onclick = () => {
-        S.panModeActive = !S.panModeActive;
-        panBtn.classList.toggle('active', S.panModeActive);
-        document.body.classList.toggle('pan-mode', S.panModeActive);
-        if (S.panModeActive && S.quickOrderActive) {
-            S.quickOrderActive = false;
-            quickOrderBtn.classList.remove('active');
-            document.body.classList.remove('quick-order-mode');
+    // --- UNFOLD PREVIEW ---
+    function lerp(a, b, t) { return a + (b - a) * t; }
+    function easeInOut(t) { return t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t + 2, 3) / 2; }
+
+    function setMorph(t) {
+        S.morphT = t;
+        S.drawOrder.forEach(fi => {
+            const poly = S.polyMap[fi];
+            if (!poly) return;
+            const pts = S.facesVerts[fi].map(vi => {
+                const f = S.vFolded[vi], c = S.vFlat[vi];
+                return [lerp(f[0], c[0], t), lerp(f[1], c[1], t)];
+            });
+            poly.setAttribute('points', pts.map(p => p.join(',')).join(' '));
+        });
+        renderHighlights();
+    }
+
+    function animateMorph(from, to, duration = 800) {
+        return new Promise(resolve => {
+            S.animating = true;
+            const start = performance.now();
+            (function frame(now) {
+                const raw = Math.min((now - start) / duration, 1);
+                setMorph(lerp(from, to, easeInOut(raw)));
+                if (raw < 1) requestAnimationFrame(frame);
+                else { S.animating = false; resolve(); }
+            })(performance.now());
+        });
+    }
+
+    const unfoldBtn = document.getElementById('unfoldBtn');
+
+    function setUnfoldDisabled(disabled) {
+        // Disable/enable all interactive elements except unfoldBtn
+        document.querySelectorAll('#sidebar button, #historyTools button, #viewControls button:not(#unfoldBtn), #quickOrderBtn').forEach(btn => {
+            btn.disabled = disabled;
+        });
+        // Disable sidebar drag & layer clicks
+        layerList.style.pointerEvents = disabled ? 'none' : '';
+    }
+
+    async function foldBack() {
+        if (S.animating || !S.isUnfolded) return;
+        S.isUnfolded = false;
+        unfoldBtn.classList.remove('active');
+        await animateMorph(S.morphT, 0);
+        setUnfoldDisabled(false);
+    }
+
+    unfoldBtn.onclick = async () => {
+        if (S.animating || !S.foldData) return;
+        if (S.isUnfolded) {
+            foldBack();
+            return;
         }
+        // Unfold: reset zoom to 1:1, disable buttons, animate
+        S.isUnfolded = true;
+        unfoldBtn.classList.add('active');
+        S.view = { x: 0, y: 0, w: 1, h: 1 };
+        updateViewBox();
+        setUnfoldDisabled(true);
+        await animateMorph(S.morphT, 1);
     };
 
-    // --- LOGICA GEOMETRICA & REVISIONE ORDINE ---
+    // Any click while unfolded folds back
+    svgEl.addEventListener('mousedown', (e) => {
+        if (S.isUnfolded && !S.animating) {
+            e.preventDefault();
+            e.stopPropagation();
+            foldBack();
+        }
+    }, true);
+
+    // --- GEOMETRY & ORDER LOGIC ---
     function saveState() { S.history.push(JSON.stringify(S.drawOrder)); S.redoStack = []; updateHistoryButtons(); }
     function undo() { if (S.history.length) { S.redoStack.push(JSON.stringify(S.drawOrder)); S.drawOrder = JSON.parse(S.history.pop()); refreshUI(); } }
     function redo() { if (S.redoStack.length) { S.history.push(JSON.stringify(S.drawOrder)); S.drawOrder = JSON.parse(S.redoStack.pop()); refreshUI(); } }
@@ -176,13 +246,24 @@
         const oy = pad - (Math.min(...ys) - (span - (Math.max(...ys)-Math.min(...ys)))/2) * sc;
         
         S.vFolded = vf.map(v => [v[0] * sc + ox, v[1] * sc + oy]);
+        // Normalize flat (crease pattern) vertices to same coordinate space
+        const cp = data.vertices_coords;
+        const fxs = cp.map(v => v[0]), fys = cp.map(v => v[1]);
+        const fSpan = Math.max(Math.max(...fxs)-Math.min(...fxs), Math.max(...fys)-Math.min(...fys)) || 1;
+        const fSc = (1 - 2 * pad) / fSpan;
+        const fOx = pad - (Math.min(...fxs) - (fSpan - (Math.max(...fxs)-Math.min(...fxs)))/2) * fSc;
+        const fOy = pad - (Math.min(...fys) - (fSpan - (Math.max(...fys)-Math.min(...fys)))/2) * fSc;
+        S.vFlat = cp.map(v => [v[0] * fSc + fOx, v[1] * fSc + fOy]);
+
         S.facesVerts = data.faces_vertices;
         S.flipped = res.flipped;
         S.drawOrder = res.drawOrder;
+        S.morphT = 0;
+        S.isUnfolded = false;
+        document.getElementById('unfoldBtn').classList.remove('active');
 
         tagsCt.innerHTML = `<span class="tag">${S.fileName}</span><span class="tag">${S.drawOrder.length} faces</span>`;
         svgEl.style.display = '';
-        svgEl.onclick = (e) => { if (e.target === svgEl) selectFace(-1); };
         refreshUI();
     }
 
@@ -218,11 +299,33 @@
         const flipped = T.map(t => t ? (t[0]*t[3]-t[1]*t[2]) < 0 : false);
         let vFolded = data.vertices_coords_folded ? data.vertices_coords_folded.map(v => [...v]) : new Array(nV);
         if (!data.vertices_coords_folded) fv.forEach((f, fi) => { if (T[fi]) f.forEach(v => vFolded[v] = applyT(T[fi], cp[v])); });
-        const order = data.faces_layer ? fv.map((_, i) => i).sort((a,b) => data.faces_layer[a] - data.faces_layer[b]) : fv.map((_, i) => i).sort((a,b) => (flipped[a]?0:1) - (flipped[b]?0:1));
+        let order;
+        const manual = data['origoto:faceManualOrder'];
+        if (manual) {
+            order = fv.map((_, i) => i).sort((a, b) => manual[a] - manual[b]);
+        } else if (data.faces_layer) {
+            order = fv.map((_, i) => i).sort((a, b) => data.faces_layer[a] - data.faces_layer[b]);
+        } else if (data.faceOrders && data.faceOrders.length) {
+            // Topological sort from faceOrders [faceA, faceB, direction]
+            const graph = Array.from({length: nF}, () => []), inDeg = new Array(nF).fill(0);
+            data.faceOrders.forEach(o => {
+                const [lo, hi] = o[2] === 1 ? [o[1], o[0]] : [o[0], o[1]];
+                graph[lo].push(hi); inDeg[hi]++;
+            });
+            const tq = []; order = [];
+            for (let i = 0; i < nF; i++) if (inDeg[i] === 0) tq.push(i);
+            while (tq.length) {
+                const f = tq.shift(); order.push(f);
+                graph[f].forEach(nb => { if (--inDeg[nb] === 0) tq.push(nb); });
+            }
+            for (let i = 0; i < nF; i++) if (!order.includes(i)) order.push(i);
+        } else {
+            order = fv.map((_, i) => i).sort((a, b) => (flipped[a]?0:1) - (flipped[b]?0:1));
+        }
         return { vFolded, flipped, drawOrder: order };
     }
 
-    // --- RENDERING ---
+    // --- RENDER ---
     function render() {
         facesLayer.innerHTML = ''; S.polyMap = {};
         S.drawOrder.forEach(fi => {
@@ -230,15 +333,15 @@
             poly.setAttribute('points', S.facesVerts[fi].map(vi => S.vFolded[vi].join(',')).join(' '));
             poly.setAttribute('fill', S.flipped[fi] ? 'var(--paper-back)' : 'var(--paper)');
             
-            // Logica di Interazione
+            // Interaction
             poly.onclick = (e) => {
                 if (S.isPanning || S.spacePressed) return;
                 e.stopPropagation();
                 if (S.quickOrderActive) {
                     saveState();
                     const idx = S.drawOrder.indexOf(fi);
-                    if (e.altKey) S.drawOrder.push(S.drawOrder.splice(idx, 1)[0]); // In cima
-                    else S.drawOrder.unshift(S.drawOrder.splice(idx, 1)[0]); // In fondo
+                    if (e.altKey) S.drawOrder.push(S.drawOrder.splice(idx, 1)[0]); // To front
+                    else S.drawOrder.unshift(S.drawOrder.splice(idx, 1)[0]); // To back
                     refreshUI();
                 } else {
                     selectFace(fi);
@@ -272,17 +375,16 @@
 
     function renderHighlights() {
         highlightLayer.innerHTML = '';
-        [S.selectedFace, S.hiFace].forEach((fi, i) => {
+        [S.selectedFace, S.hiFace].forEach((fi) => {
             if (fi !== -1 && S.polyMap[fi]) {
                 const clone = S.polyMap[fi].cloneNode(true);
                 clone.classList.add('hi-clone');
-                if (i === 0) clone.style.stroke = 'var(--accent)';
                 highlightLayer.appendChild(clone);
             }
         });
     }
 
-    // --- SIDEBAR LIST ---
+    // --- SIDEBAR ---
     function buildList() {
         layerList.innerHTML = '';
         [...S.drawOrder].reverse().forEach(fi => {
@@ -292,14 +394,14 @@
             if (fi === S.selectedFace) item.classList.add('selected');
             
             item.innerHTML = `
-                <div class="drag-handle"><i class="ph-fill ph-dots-six-vertical"></i></div>
+                <div class="drag-handle"><i class="ph-bold ph-dots-six-vertical"></i></div>
                 <div class="swatch" style="background:${S.flipped[fi] ? 'var(--paper-back)' : 'var(--paper)'}"></div>
-                <span class="face-id">Faccia ${fi}</span>
+                <span class="face-id">Face ${fi}</span>
                 <div class="controls">
-                    <button class="btn-icon" data-act="top" title="In Cima"><i class="ph-fill ph-caret-double-up"></i></button>
-                    <button class="btn-icon" data-act="up" title="Su"><i class="ph-fill ph-caret-up"></i></button>
-                    <button class="btn-icon" data-act="down" title="Giù"><i class="ph-fill ph-caret-down"></i></button>
-                    <button class="btn-icon" data-act="bot" title="In Fondo"><i class="ph-fill ph-caret-double-down"></i></button>
+                    <button class="btn-icon" data-act="top" title="To Front"><i class="ph-fill ph-caret-double-up"></i></button>
+                    <button class="btn-icon" data-act="up" title="Up"><i class="ph-fill ph-caret-up"></i></button>
+                    <button class="btn-icon" data-act="down" title="Down"><i class="ph-fill ph-caret-down"></i></button>
+                    <button class="btn-icon" data-act="bot" title="To Back"><i class="ph-fill ph-caret-double-down"></i></button>
                 </div>
             `;
             
@@ -312,11 +414,21 @@
             c.querySelector('[data-act="bot"]').onclick = () => { saveState(); S.drawOrder.unshift(S.drawOrder.splice(S.drawOrder.indexOf(fi), 1)[0]); refreshUI(); };
 
             // Drag and Drop
-            item.ondragstart = () => { dragSrcEl = item; item.classList.add('dragging'); };
-            item.ondragover = (e) => { e.preventDefault(); item.classList.add('drag-over'); };
-            item.ondragleave = () => item.classList.remove('drag-over');
+            let dragCounter = 0;
+            item.ondragstart = (e) => {
+                dragSrcEl = item;
+                item.classList.add('dragging');
+                e.dataTransfer.effectAllowed = 'move';
+            };
+            item.ondragend = () => {
+                item.classList.remove('dragging');
+                layerList.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+            };
+            item.ondragenter = (e) => { e.preventDefault(); dragCounter++; item.classList.add('drag-over'); };
+            item.ondragover = (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; };
+            item.ondragleave = () => { dragCounter--; if (dragCounter <= 0) { dragCounter = 0; item.classList.remove('drag-over'); } };
             item.ondrop = (e) => {
-                e.preventDefault(); item.classList.remove('drag-over');
+                e.preventDefault(); dragCounter = 0; item.classList.remove('drag-over');
                 const fromFi = parseInt(dragSrcEl.dataset.fi), toFi = parseInt(item.dataset.fi);
                 if (fromFi !== toFi) {
                     saveState();
@@ -335,7 +447,7 @@
     document.getElementById('resetBtn').onclick = () => { if (S.foldData) { saveState(); processModel(S.foldData); } };
     document.getElementById('exportBtn').onclick = () => {
         const out = JSON.parse(JSON.stringify(S.foldData));
-        out.faces_layer = S.drawOrder.reduce((acc, fi, i) => { acc[fi] = i; return acc; }, []);
+        out['origoto:faceManualOrder'] = S.drawOrder.reduce((acc, fi, i) => { acc[fi] = i; return acc; }, []);
         const blob = new Blob([JSON.stringify(out)], { type: 'application/json' });
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
@@ -348,6 +460,7 @@
         const styles = getComputedStyle(document.documentElement);
         const paperColor = styles.getPropertyValue('--paper').trim();
         const paperBackColor = styles.getPropertyValue('--paper-back').trim();
+        const borderColor = styles.getPropertyValue('--border').trim();
 
         // Build a clean standalone SVG with only the face polygons
         const svg = document.createElementNS(NS, 'svg');
@@ -368,8 +481,8 @@
             const poly = document.createElementNS(NS, 'polygon');
             poly.setAttribute('points', S.facesVerts[fi].map(vi => S.vFolded[vi].join(',')).join(' '));
             poly.setAttribute('fill', S.flipped[fi] ? paperBackColor : paperColor);
-            poly.setAttribute('stroke', 'rgba(0,0,0,0.15)');
-            poly.setAttribute('stroke-width', '0.002');
+            poly.setAttribute('stroke', borderColor);
+            poly.setAttribute('stroke-width', '0.003');
             poly.setAttribute('stroke-linejoin', 'round');
             svg.appendChild(poly);
         });
@@ -385,5 +498,11 @@
 
     undoBtn.onclick = undo;
     redoBtn.onclick = redo;
+
+    // --- HELP LIGHTBOX ---
+    const helpOverlay = document.getElementById('helpOverlay');
+    document.getElementById('helpBtn').onclick = () => helpOverlay.classList.add('open');
+    document.getElementById('helpClose').onclick = () => helpOverlay.classList.remove('open');
+    helpOverlay.onclick = (e) => { if (e.target === helpOverlay) helpOverlay.classList.remove('open'); };
 
 })();

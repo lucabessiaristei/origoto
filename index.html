@@ -11,6 +11,8 @@
     <link rel="icon" type="image/png" sizes="16x16" href="media/favicon/favicon_16.png">
     <link rel="stylesheet" type="text/css"
         href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.1/src/fill/style.css" />
+    <link rel="stylesheet" type="text/css"
+        href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.1/src/bold/style.css" />
 </head>
 
 <body>
@@ -41,11 +43,11 @@
             </svg>
 
             <div class="viewport-controls" id="viewControls" style="display:none">
-                <button id="quickOrderBtn" title="Quick Order Tool (Click: Back | Shift+Click: Front)">
-                    <i class="ph-fill ph-cursor-click"></i>
+                <button id="quickOrderBtn" title="Quick Order Tool (Click: Back | Alt+Click: Front)">
+                    <i class="ph-fill ph-stack"></i>
                 </button>
-                <button id="panBtn" title="Pan Tool (or hold Space)">
-                    <i class="ph-fill ph-hand"></i>
+                <button id="unfoldBtn" title="Preview Unfold">
+                    <i class="ph-bold ph-grid-four"></i>
                 </button>
                 <div class="hr-sep"></div>
                 <button id="zoomIn"><i class="ph-fill ph-plus"></i></button>
@@ -62,6 +64,48 @@
                 <div class="spacer"></div>
                 <button class="primary" id="exportBtn">Export FOLD</button>
                 <button class="primary" id="exportSvgBtn">Export SVG</button>
+            </div>
+        </div>
+    </div>
+
+    <a class="github-link" href="https://github.com/lucabessiaristei/origoto" target="_blank" rel="noopener">
+        <i class="ph-fill ph-github-logo"></i>
+    </a>
+
+    <button class="help-btn" id="helpBtn" title="Help">
+        <i class="ph-fill ph-question"></i>
+    </button>
+
+    <div class="help-overlay" id="helpOverlay">
+        <div class="help-box">
+            <div class="help-header">
+                <span>Keyboard Shortcuts & Controls</span>
+                <button class="help-close" id="helpClose"><i class="ph-fill ph-x"></i></button>
+            </div>
+            <div class="help-content">
+                <div class="help-section">
+                    <div class="help-section-title">Navigation</div>
+                    <div class="help-row"><kbd>Scroll</kbd><span>Zoom in / out</span></div>
+                    <div class="help-row"><kbd>Drag</kbd> on empty area<span>Pan</span></div>
+                    <div class="help-row"><kbd>Space</kbd> + drag<span>Pan over faces</span></div>
+                    <div class="help-row"><kbd>Middle click</kbd> + drag<span>Pan (anywhere)</span></div>
+                </div>
+                <div class="help-section">
+                    <div class="help-section-title">Editing</div>
+                    <div class="help-row"><kbd>Click</kbd> face<span>Select face</span></div>
+                    <div class="help-row"><kbd>Ctrl/Cmd</kbd> + <kbd>Z</kbd><span>Undo</span></div>
+                    <div class="help-row"><kbd>Ctrl/Cmd</kbd> + <kbd>Shift</kbd> + <kbd>Z</kbd><span>Redo</span></div>
+                    <div class="help-row"><kbd>Ctrl/Cmd</kbd> + <kbd>Y</kbd><span>Redo</span></div>
+                </div>
+                <div class="help-section">
+                    <div class="help-section-title">Toolbar</div>
+                    <div class="help-row"><i class="ph-fill ph-stack"></i><span>Quick Order — click face to send back, Alt+click to send front</span></div>
+                    <div class="help-row"><i class="ph-bold ph-grid-four"></i><span>Unfold Preview — click anywhere to fold back</span></div>
+                </div>
+                <div class="help-section">
+                    <div class="help-section-title">Sidebar</div>
+                    <div class="help-row"><span>Drag layers to reorder. Use arrow buttons for precise control.</span></div>
+                </div>
             </div>
         </div>
     </div>
